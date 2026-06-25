@@ -18,6 +18,10 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+      upload_release:
+        description: 'Upload firmware to GitHub Release'
+        required: false
+        default: 'false'
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
@@ -26,7 +30,7 @@ env:
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_RELEASE: false
+  UPLOAD_RELEASE: true
   UPLOAD_FIRMWARE: true
   TZ: Asia/Shanghai
 
@@ -123,18 +127,21 @@ jobs:
         cd openwrt/bin/targets/*/*
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "---- ls -la START ----"
+        ls -la
+        echo "---- ls -la END ----"
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Generate release tag
       id: tag
-      if: env.UPLOAD_RELEASE == 'true' && steps.organize.outputs.status == 'success' && !cancelled()
+      if: (github.event.inputs.upload_release == 'true' || env.UPLOAD_RELEASE == 'true') && steps.organize.outputs.status == 'success' && !cancelled()
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v1
-      if: steps.tag.outputs.status == 'success' && !cancelled()
+      if: (github.event.inputs.upload_release == 'true' || env.UPLOAD_RELEASE == 'true') && steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -149,7 +156,7 @@ jobs:
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@v0.1.0
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: (github.event.inputs.upload_release == 'true' || env.UPLOAD_RELEASE == 'true') && !cancelled()
       with:
         keep_latest: 3
         delete_tags: true
