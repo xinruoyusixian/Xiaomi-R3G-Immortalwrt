@@ -1,14 +1,12 @@
 #
-# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
-#
-# This is free software, licensed under the MIT License.
-# See /LICENSE for more information.
-#
-# https://github.com/P3TERX/Actions-OpenWrt
-# Description: Build OpenWrt using GitHub Actions
+# Build OpenWrt workflow — upload to Release using a PAT (RELEASE_TOKEN) with artifact fallback
 #
 
 name: Build OpenWrt
+
+# 保留 contents 写权限（即使使用 PAT，也不会有副作用）
+permissions:
+  contents: write
 
 on:
   repository_dispatch:
@@ -19,7 +17,7 @@ on:
         required: false
         default: 'false'
       upload_release:
-        description: 'Upload firmware to GitHub Release'
+        description: 'Upload firmware to GitHub Release (overrides env.UPLOAD_RELEASE)'
         required: false
         default: 'false'
 
@@ -30,6 +28,7 @@ env:
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
+  # 默认仍自动上传（手动触发时可通过 upload_release 输入覆盖）
   UPLOAD_RELEASE: true
   UPLOAD_FIRMWARE: true
   TZ: Asia/Shanghai
@@ -91,7 +90,7 @@ jobs:
 
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
-      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
+      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
       env:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -114,7 +113,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+        echo "FILE_DATE=_$(date +\"%Y%m%d%H%M\")" >> $GITHUB_ENV
 
     - name: Check space usage
       if: (!cancelled())
@@ -132,19 +131,29 @@ jobs:
         echo "---- ls -la END ----"
         echo "status=success" >> $GITHUB_OUTPUT
 
+    # 兜底：上传到 actions artifact（保留原版行为）
+    - name: Upload firmware directory (artifact fallback)
+      uses: actions/upload-artifact@main
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
+
     - name: Generate release tag
       id: tag
-      if: (github.event.inputs.upload_release == 'true' || env.UPLOAD_RELEASE == 'true') && steps.organize.outputs.status == 'success' && !cancelled()
+      if: steps.organize.outputs.status == 'success' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        echo "release_tag=$(date +\"%Y.%m.%d-%H%M\")" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Upload firmware to release
+    - name: Upload firmware to release (create Release & upload assets using PAT)
       uses: softprops/action-gh-release@v1
       if: (github.event.inputs.upload_release == 'true' || env.UPLOAD_RELEASE == 'true') && steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 保证即便 Release 上传失败，也不会丢失 artifacts；如果你希望失败时报错以提醒，可移除下一行
+      continue-on-error: true
       with:
+        # 必须先在仓库 Secrets 中添加 RELEASE_TOKEN（值为你生成的 PAT）
+        token: ${{ secrets.RELEASE_TOKEN }}
         tag_name: ${{ steps.tag.outputs.release_tag }}
         files: ${{ env.FIRMWARE }}/*
 
@@ -157,6 +166,7 @@ jobs:
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@v0.1.0
       if: (github.event.inputs.upload_release == 'true' || env.UPLOAD_RELEASE == 'true') && !cancelled()
+      continue-on-error: true
       with:
         keep_latest: 3
         delete_tags: true
