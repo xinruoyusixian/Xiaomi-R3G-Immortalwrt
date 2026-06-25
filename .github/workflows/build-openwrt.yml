@@ -18,6 +18,14 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+      upload_release:
+        description: 'Upload to Releases'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - true
+          - false
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
@@ -26,7 +34,7 @@ env:
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_RELEASE: false
+  UPLOAD_RELEASE: true
   UPLOAD_FIRMWARE: true
   TZ: Asia/Shanghai
 
@@ -116,21 +124,61 @@ jobs:
       if: (!cancelled())
       run: df -hT
 
-    - name: Organize files
-      id: organize
+    # ========== 步骤1: 上传打包的固件到 Artifacts（保持原样） ==========
+    - name: Organize files for Artifacts (packaged)
+      id: organize_artifacts
       if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
         cd openwrt/bin/targets/*/*
+        # 删除packages目录以减小体积
         rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "FIRMWARE_ARTIFACTS=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Upload firmware directory
+    - name: Upload packaged firmware to Artifacts
       uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
+      if: steps.organize_artifacts.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
+        name: OpenWrt_firmware_packaged${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE_ARTIFACTS }}
+
+    # ========== 步骤2: 准备未打包的固件文件用于 Releases ==========
+    - name: Prepare individual firmware files for Releases
+      id: prepare_release
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        cd openwrt/bin/targets/*/*
+        
+        # 创建临时目录存放未打包的固件
+        mkdir -p /tmp/release_files
+        
+        # 复制所有固件文件（不打包），排除packages目录
+        # 只复制常见的固件文件类型
+        find . -maxdepth 1 -type f \( \
+          -name "*.bin" -o \
+          -name "*.img" -o \
+          -name "*.gz" -o \
+          -name "*.zst" -o \
+          -name "*.tar" -o \
+          -name "*.itb" -o \
+          -name "*.elf" -o \
+          -name "*.kernel" -o \
+          -name "*.rootfs" -o \
+          -name "*.dtb" -o \
+          -name "*.manifest" -o \
+          -name "*.sha256" -o \
+          -name "*.sha512" \) -exec cp {} /tmp/release_files/ \;
+        
+        # 同时复制版本信息文件
+        [ -f version.date ] && cp version.date /tmp/release_files/ || true
+        [ -f version.info ] && cp version.info /tmp/release_files/ || true
+        
+        echo "RELEASE_FILES=/tmp/release_files" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+        
+        # 列出所有文件用于调试
+        echo "Files prepared for release:"
+        ls -lh /tmp/release_files/
 
     - name: Generate release tag
       id: tag
@@ -139,14 +187,17 @@ jobs:
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Upload firmware to release
+    - name: Upload individual firmware files to Release
       uses: softprops/action-gh-release@v1
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
-        files: ${{ env.FIRMWARE }}/*
+        files: ${{ env.RELEASE_FILES }}/*
+        generate_release_notes: true
+        prerelease: false
+        draft: false
 
     - name: Delete workflow runs
       uses: GitRML/delete-workflow-runs@main
