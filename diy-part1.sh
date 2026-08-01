@@ -18,4 +18,12 @@
 
 # Add a feed source / 添加自定义软件包源到feeds.conf.default
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
-echo 'src-git luci-app-harbor-file https://github.com/destan19/luci-app-harbor-file' >>feeds.conf.default
+#echo 'src-git luci-app-harbor-file https://github.com/destan19/luci-app-harbor-file' >>feeds.conf.default
+
+FEEDS_FILE="feeds.conf.default"
+LINE="src-git luci-app-harbor-file https://github.com/destan19/luci-app-harbor-file.git;openwrt-24.10"
+
+# 只在不存在时追加，保证末尾换行
+if ! grep -Fxq "$LINE" "$FEEDS_FILE" 2>/dev/null; then
+  printf '%s\n' "$LINE" >>"$FEEDS_FILE"
+fi
