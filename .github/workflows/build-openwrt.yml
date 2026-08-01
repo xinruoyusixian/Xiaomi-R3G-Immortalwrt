@@ -91,6 +91,28 @@ jobs:
         echo "---- hexdump ----"
         hexdump -C feeds.conf.default | sed -n '1,12p' || true
         
+    - name: Save feeds.conf.default for artifact
+      if: always()
+      run: |
+        if [ -f openwrt/feeds.conf.default ]; then
+          mkdir -p /tmp/artifacts
+          cp openwrt/feeds.conf.default /tmp/artifacts/feeds.conf.default
+          echo "----- feeds.conf.default (cat -A) -----"
+          sed -n '1,200p' openwrt/feeds.conf.default | cat -A || true
+          echo "----- hexdump -----"
+          hexdump -C openwrt/feeds.conf.default | sed -n '1,40p' || true
+        else
+          mkdir -p /tmp/artifacts
+          echo "NO_FEEDS_CONF" > /tmp/artifacts/feeds.conf.default_missing
+          echo "openwrt/feeds.conf.default not found"
+        fi
+    
+    - name: Upload feeds.conf.default artifact
+      if: always()
+      uses: actions/upload-artifact@main
+      with:
+        name: feeds-conf-debug
+        path: /tmp/artifacts        
     - name: Update feeds
       run: cd openwrt && ./scripts/feeds update -a
 
