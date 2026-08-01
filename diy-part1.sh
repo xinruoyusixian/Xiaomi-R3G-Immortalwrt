@@ -21,5 +21,5 @@
 #echo 'src-git luci-app-harbor-file https://github.com/destan19/luci-app-harbor-file' >>feeds.conf.default
 
 FEEDS_FILE="feeds.conf.default"
-LINE="src-git luci_app_harbor_file https://github.com/destan19/luci-app-harbor-file.git;openwrt-24.10"
+LINE="src-git HarborFile https://github.com/destan19/luci-app-harbor-file.git;openwrt-24.10"
 
