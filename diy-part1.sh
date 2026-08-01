@@ -18,4 +18,5 @@
 
 # Add a feed source / 添加自定义软件包源到feeds.conf.default
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
+echo 'src-git luci-app-harbor-file https://github.com/destan19/luci-app-harbor-file' >>feeds.conf.default
 
