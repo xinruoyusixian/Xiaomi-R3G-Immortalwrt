@@ -80,6 +80,17 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
+
+    #debug
+    - name: Debug feeds.conf.default
+      if: always()
+      run: |
+        cd openwrt
+        echo "---- feeds.conf.default (sed -n '1,200p' | cat -A) ----"
+        sed -n '1,200p' feeds.conf.default | cat -A || true
+        echo "---- hexdump ----"
+        hexdump -C feeds.conf.default | sed -n '1,12p' || true
+        
     - name: Update feeds
       run: cd openwrt && ./scripts/feeds update -a
 
